@@ -25,14 +25,6 @@ Upon startup, the system seeds a default database. You can log in using the foll
 - **Billing Staff** (`billing`) - Manage invoices and payment statuses.
 - **Patient** (`patient`, `patient2`, `patient3`) - Request appointments and view personal history/invoices.
 
-## Screenshots
-
-###### Login Screen
-![Login Screen](Images/screenshots/Login.png "Login Screen")
-
-###### Patient Dashboard
-![Patient Screen](Images/screenshots/Patient.png "Patient Screen")
-
 ## Installation & Running
 
 This project does not require an external database server (like MySQL), as it leverages local serialized `.dat` files stored in the `data/` directory.
