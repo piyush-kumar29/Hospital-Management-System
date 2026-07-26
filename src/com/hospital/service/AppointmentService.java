@@ -30,10 +30,11 @@ public class AppointmentService {
         }
 
         String appNo = "APT-" + (dataStore.getAppointments().size() + 101);
-        Appointment newApp = new Appointment(appNo, patientId, patientName, doctorId, doctorName, date, timeSlot, symptoms);
+        String token = "TK-" + String.format("%03d", dataStore.getAppointments().size() + 1);
+        Appointment newApp = new Appointment(appNo, patientId, patientName, doctorId, doctorName, date, timeSlot, symptoms, token);
         dataStore.getAppointments().add(newApp);
         dataStore.saveAllData();
-        dataStore.addLog(patientName, "PATIENT", "BOOK_APPOINTMENT", "Booked appointment " + appNo + " with " + doctorName + " on " + date + " " + timeSlot);
+        dataStore.addLog(patientName, "PATIENT", "BOOK_APPOINTMENT", "Booked appointment " + appNo + " (Token: " + token + ") with " + doctorName + " on " + date + " " + timeSlot);
         return newApp;
     }
 

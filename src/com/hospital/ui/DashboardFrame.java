@@ -91,6 +91,8 @@ public class DashboardFrame extends JFrame {
                 return new BillingPanel((BillingStaff) user);
             case PATIENT:
                 return new PatientPanel((Patient) user);
+            case LAB_TECH:
+                return new LabTechPanel((LabTech) user);
             default:
                 JPanel p = new JPanel();
                 p.add(new JLabel("No panel configured for role: " + user.getRole()));

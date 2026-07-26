@@ -33,6 +33,9 @@ public class PatientPanel extends JPanel {
     private JTable rxTable;
     private DefaultTableModel rxModel;
 
+    private JTable labTable;
+    private DefaultTableModel labModel;
+
     public PatientPanel(Patient patient) {
         this.patient = patient;
         setLayout(new BorderLayout(16, 16));
@@ -65,6 +68,7 @@ public class PatientPanel extends JPanel {
         tabbedPane.addTab("My Appointments", createAppointmentsTab());
         tabbedPane.addTab("Book Doctor Appointment", createBookTab());
         tabbedPane.addTab("My Invoices & Prescriptions", createMedicalRecordsTab());
+        tabbedPane.addTab("My Lab Reports", createLabReportsTab());
 
         add(tabbedPane, BorderLayout.CENTER);
     }
@@ -132,9 +136,19 @@ public class PatientPanel extends JPanel {
         panel.setBorder(new EmptyBorder(12, 0, 0, 0));
 
         // Bills Panel
-        JPanel billsPanel = new JPanel(new BorderLayout());
+        JPanel billsPanel = new JPanel(new BorderLayout(0, 5));
         billsPanel.setOpaque(false);
-        billsPanel.add(new JLabel("My Invoices & Billing"), BorderLayout.NORTH);
+        
+        JPanel billsToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        billsToolbar.setOpaque(false);
+        billsToolbar.add(new JLabel("My Invoices & Billing"));
+        JButton btnView = UIUtils.createStyledButton("View Itemized Invoice", UIUtils.COLOR_INFO, Color.WHITE);
+        JButton btnPay = UIUtils.createStyledButton("Pay Invoice", UIUtils.COLOR_SUCCESS, Color.WHITE);
+        btnView.addActionListener(e -> viewItemizedInvoiceDialog());
+        btnPay.addActionListener(e -> processPaymentDialog());
+        billsToolbar.add(btnView);
+        billsToolbar.add(btnPay);
+        billsPanel.add(billsToolbar, BorderLayout.NORTH);
         
         String[] bCols = {"Invoice ID", "Date", "Total Fee ($)", "Payment Status", "Payment Method"};
         billsModel = new DefaultTableModel(bCols, 0) {
@@ -162,6 +176,30 @@ public class PatientPanel extends JPanel {
         panel.add(billsPanel);
         panel.add(rxPanel);
         
+        return panel;
+    }
+
+    private JPanel createLabReportsTab() {
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBackground(UIUtils.COLOR_BG);
+        panel.setBorder(new EmptyBorder(12, 0, 0, 0));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        toolbar.setOpaque(false);
+        JButton btnRefresh = UIUtils.createStyledButton("Refresh", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
+        btnRefresh.addActionListener(e -> refreshTables());
+        toolbar.add(btnRefresh);
+        panel.add(toolbar, BorderLayout.NORTH);
+
+        String[] cols = {"Test ID", "Doctor Name", "Test Name", "Date Requested", "Status", "Result / Notes"};
+        labModel = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        labTable = new JTable(labModel);
+        UIUtils.styleTable(labTable);
+        labTable.getColumnModel().getColumn(4).setCellRenderer(new UIUtils.StatusBadgeRenderer());
+
+        panel.add(new JScrollPane(labTable), BorderLayout.CENTER);
         return panel;
     }
 
@@ -241,6 +279,63 @@ public class PatientPanel extends JPanel {
         dialog.setVisible(true);
     }
 
+    private void viewItemizedInvoiceDialog() {
+        int sel = billsTable.getSelectedRow();
+        if (sel == -1) {
+            JOptionPane.showMessageDialog(this, "Select an invoice to view details.", "Notice", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        String invId = (String) billsModel.getValueAt(sel, 0);
+        Invoice invoice = billingService.getInvoicesByPatient(patient.getId()).stream().filter(i -> i.getId().equals(invId)).findFirst().orElse(null);
+        if (invoice == null) return;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("==========================================\n");
+        sb.append("         HOSPITAL ITEMIZED INVOICE        \n");
+        sb.append("==========================================\n");
+        sb.append("Invoice ID   : ").append(invoice.getId()).append("\n");
+        sb.append("Patient Name : ").append(invoice.getPatientName()).append("\n");
+        sb.append("Issue Date   : ").append(invoice.getIssueDate()).append("\n");
+        sb.append("Payment Status: ").append(invoice.getPaymentStatus()).append("\n");
+        sb.append("Payment Method: ").append(invoice.getPaymentMethod()).append("\n");
+        sb.append("------------------------------------------\n");
+        sb.append("Line Items:\n");
+        for (InvoiceItem item : invoice.getItems()) {
+            sb.append(String.format(" - %-32s : $%8.2f\n", item.getDescription(), item.getAmount()));
+        }
+        sb.append("------------------------------------------\n");
+        sb.append(String.format("TOTAL AMOUNT DUE:                     $%8.2f\n", invoice.getTotalAmount()));
+        sb.append("==========================================\n");
+
+        JTextArea area = new JTextArea(sb.toString());
+        area.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        area.setEditable(false);
+        JOptionPane.showMessageDialog(this, new JScrollPane(area), "Itemized Receipt Preview - " + invId, JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void processPaymentDialog() {
+        int sel = billsTable.getSelectedRow();
+        if (sel == -1) {
+            JOptionPane.showMessageDialog(this, "Select an invoice to pay.", "Notice", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        String invId = (String) billsModel.getValueAt(sel, 0);
+        String status = (String) billsModel.getValueAt(sel, 3);
+        if ("PAID".equalsIgnoreCase(status)) {
+            JOptionPane.showMessageDialog(this, "Invoice " + invId + " is already PAID!", "Notice", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        String[] methods = {"CREDIT_CARD", "DEBIT_CARD", "HEALTH_INSURANCE"};
+        String method = (String) JOptionPane.showInputDialog(this, "Select Payment Method:", "Pay Invoice - " + invId, JOptionPane.QUESTION_MESSAGE, null, methods, methods[0]);
+
+        if (method != null) {
+            billingService.recordPayment(invId, method, patient.getFullName());
+            refreshTables();
+            JOptionPane.showMessageDialog(this, "Payment of $" + billsModel.getValueAt(sel, 2) + " processed successfully!");
+        }
+    }
+
     private void cancelAppointmentAction() {
         int sel = aptTable.getSelectedRow();
         if (sel == -1) {
@@ -281,6 +376,15 @@ public class PatientPanel extends JPanel {
                     items.append(item.getMedicineName()).append(" (x").append(item.getQuantity()).append("); ");
                 }
                 rxModel.addRow(new Object[]{rx.getId(), rx.getDate(), rx.getDoctorName(), items.toString(), rx.getStatus()});
+            }
+        }
+        
+        if (labModel != null) {
+            labModel.setRowCount(0);
+            for (LabTest lt : dataStore.getLabTests()) {
+                if (lt.getPatientId().equals(patient.getId())) {
+                    labModel.addRow(new Object[]{lt.getId(), lt.getDoctorName(), lt.getTestName(), lt.getDateRequested(), lt.getStatus(), lt.getResultNotes()});
+                }
             }
         }
     }

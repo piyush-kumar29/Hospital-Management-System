@@ -55,12 +55,12 @@ public class BillingPanel extends JPanel {
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         toolbar.setOpaque(false);
 
-        JButton btnGenerate = UIUtils.createStyledButton("+ Generate Patient Invoice", UIUtils.COLOR_PRIMARY, Color.WHITE);
+        JButton btnGenerate = UIUtils.createStyledButton("+ Calculate IPD Discharge Bill", UIUtils.COLOR_PRIMARY, Color.WHITE);
         JButton btnPay = UIUtils.createStyledButton("Process Payment", UIUtils.COLOR_SUCCESS, Color.WHITE);
         JButton btnView = UIUtils.createStyledButton("View Itemized Invoice", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
         JButton btnRefresh = UIUtils.createStyledButton("Refresh", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
 
-        btnGenerate.addActionListener(e -> openGenerateInvoiceDialog());
+        btnGenerate.addActionListener(e -> calculateIPDDischargeBill());
         btnPay.addActionListener(e -> processPaymentDialog());
         btnView.addActionListener(e -> viewItemizedInvoiceDialog());
         btnRefresh.addActionListener(e -> refreshTables());
@@ -85,66 +85,61 @@ public class BillingPanel extends JPanel {
         add(mainContent, BorderLayout.CENTER);
     }
 
-    private void openGenerateInvoiceDialog() {
-        List<Patient> patients = patientService.getAllPatients();
-        if (patients.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No registered patients found.", "Error", JOptionPane.ERROR_MESSAGE);
+    private void calculateIPDDischargeBill() {
+        java.util.List<com.hospital.model.BedAllocation> occupiedBeds = new java.util.ArrayList<>();
+        for (com.hospital.model.BedAllocation b : com.hospital.repository.DataStore.getInstance().getBeds()) {
+            if ("OCCUPIED".equalsIgnoreCase(b.getStatus())) {
+                Patient p = patientService.getAllPatients().stream().filter(pat -> pat.getId().equals(b.getPatientId())).findFirst().orElse(null);
+                if (p != null && p.isClinicalDischarge()) {
+                    occupiedBeds.add(b);
+                }
+            }
+        }
+        
+        if (occupiedBeds.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No patients currently occupying beds with a Clinical Discharge status.", "Notice", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Generate Patient Invoice", true);
-        dialog.setLayout(new GridBagLayout());
-        dialog.setSize(460, 380);
-        dialog.setLocationRelativeTo(this);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(6, 12, 6, 12);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        String[] patientNames = patients.stream().map(p -> p.getFullName() + " (" + p.getId() + ")").toArray(String[]::new);
-        JComboBox<String> cbPatient = UIUtils.createStyledComboBox(patientNames);
-
-        JTextField txtConsult = UIUtils.createStyledTextField(15); txtConsult.setText("150.00");
-        JTextField txtWard = UIUtils.createStyledTextField(15); txtWard.setText("200.00");
-        JTextField txtPharma = UIUtils.createStyledTextField(15); txtPharma.setText("45.00");
-
-        int row = 0;
-        gbc.gridx = 0; gbc.gridy = row; dialog.add(new JLabel("Select Patient:"), gbc);
-        gbc.gridx = 1; dialog.add(cbPatient, gbc);
-
-        row++;
-        gbc.gridx = 0; gbc.gridy = row; dialog.add(new JLabel("Consultation Charges ($):"), gbc);
-        gbc.gridx = 1; dialog.add(txtConsult, gbc);
-
-        row++;
-        gbc.gridx = 0; gbc.gridy = row; dialog.add(new JLabel("Ward / Bed Stay ($):"), gbc);
-        gbc.gridx = 1; dialog.add(txtWard, gbc);
-
-        row++;
-        gbc.gridx = 0; gbc.gridy = row; dialog.add(new JLabel("Pharmacy / Lab ($):"), gbc);
-        gbc.gridx = 1; dialog.add(txtPharma, gbc);
-
-        row++;
-        gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 2;
-        JButton btnSubmit = UIUtils.createStyledButton("Generate Invoice", UIUtils.COLOR_PRIMARY, Color.WHITE);
-        btnSubmit.addActionListener(e -> {
-            try {
-                Patient p = patients.get(cbPatient.getSelectedIndex());
-                double cFee = Double.parseDouble(txtConsult.getText().trim());
-                double wFee = Double.parseDouble(txtWard.getText().trim());
-                double pFee = Double.parseDouble(txtPharma.getText().trim());
-
-                Invoice inv = billingService.generateInvoiceForPatient(p, cFee, wFee, pFee, staff.getFullName());
-                refreshTables();
-                dialog.dispose();
-                JOptionPane.showMessageDialog(this, "Invoice " + inv.getId() + " generated for total $" + String.format("%.2f", inv.getTotalAmount()));
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(dialog, "Invalid charges entered!", "Error", JOptionPane.ERROR_MESSAGE);
+        String[] options = occupiedBeds.stream().map(b -> b.getPatientName() + " (" + b.getBedNumber() + ")").toArray(String[]::new);
+        String chosen = (String) JOptionPane.showInputDialog(this, "Select IPD Patient to Bill for Bed Stay:", "Calculate IPD Bill", JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+        
+        if (chosen != null) {
+            com.hospital.model.BedAllocation bed = occupiedBeds.get(java.util.Arrays.asList(options).indexOf(chosen));
+            
+            String daysStr = JOptionPane.showInputDialog(this, "Enter number of days stayed since " + bed.getAdmissionDate() + ":", "3");
+            if (daysStr != null && !daysStr.trim().isEmpty()) {
+                try {
+                    int days = Integer.parseInt(daysStr.trim());
+                    double totalBedCharge = days * bed.getDailyRate();
+                    
+                    Patient p = null;
+                    for (Patient pat : patientService.getAllPatients()) {
+                        if (pat.getId().equals(bed.getPatientId())) { p = pat; break; }
+                    }
+                    
+                    if (p != null) {
+                        double discount = 0.0;
+                        if (!"Cash".equalsIgnoreCase(p.getInsuranceProvider())) {
+                            int apply = JOptionPane.showConfirmDialog(this, "Patient has " + p.getInsuranceProvider() + " insurance. Apply 50% coverage discount?", "Apply Insurance", JOptionPane.YES_NO_OPTION);
+                            if (apply == JOptionPane.YES_OPTION) {
+                                discount = totalBedCharge * 0.5;
+                            }
+                        }
+                        
+                        billingService.addChargeToPatientInvoice(p, "IPD Bed Stay (" + days + " days @ $" + bed.getDailyRate() + ")", totalBedCharge, staff.getFullName());
+                        if (discount > 0) {
+                            billingService.addChargeToPatientInvoice(p, "Insurance Coverage Discount (" + p.getInsuranceProvider() + ")", -discount, staff.getFullName());
+                        }
+                        
+                        refreshTables();
+                        JOptionPane.showMessageDialog(this, "IPD Bed Charges successfully added to patient's master bill.");
+                    }
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "Invalid number of days.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
             }
-        });
-
-        dialog.add(btnSubmit, gbc);
-        dialog.setVisible(true);
+        }
     }
 
     private void processPaymentDialog() {
@@ -167,8 +162,20 @@ public class BillingPanel extends JPanel {
 
         if (method != null) {
             billingService.recordPayment(invId, method, staff.getFullName());
+            
+            // Generate Gate Pass
+            Invoice invoice = billingService.getAllInvoices().stream().filter(i -> i.getId().equals(invId)).findFirst().orElse(null);
+            if (invoice != null) {
+                Patient patient = patientService.getAllPatients().stream().filter(p -> p.getId().equals(invoice.getPatientId())).findFirst().orElse(null);
+                if (patient != null) {
+                    patient.setFinancialDischarge(true);
+                    String gp = "GP-" + (int)(Math.random() * 100000);
+                    patient.setGatePassId(gp);
+                    com.hospital.repository.DataStore.getInstance().saveAllData();
+                    JOptionPane.showMessageDialog(this, "Payment of " + invoiceModel.getValueAt(sel, 3) + " processed via " + method + "!\n\nSecurity Gate Pass Generated: " + gp);
+                }
+            }
             refreshTables();
-            JOptionPane.showMessageDialog(this, "Payment of " + invoiceModel.getValueAt(sel, 3) + " processed via " + method + "!");
         }
     }
 

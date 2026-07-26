@@ -12,6 +12,8 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public class NursePanel extends JPanel {
@@ -21,6 +23,9 @@ public class NursePanel extends JPanel {
 
     private JTable vitalsTable;
     private DefaultTableModel vitalsModel;
+    
+    private JTable marTable;
+    private DefaultTableModel marModel;
 
     public NursePanel(Nurse nurse) {
         this.nurse = nurse;
@@ -47,8 +52,18 @@ public class NursePanel extends JPanel {
 
         add(metricsPanel, BorderLayout.NORTH);
 
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.setFont(UIUtils.FONT_BOLD);
+        tabbedPane.addTab("Patient Vitals Log", createVitalsTab());
+        tabbedPane.addTab("Medication Administration (MAR)", createMARTab());
+
+        add(tabbedPane, BorderLayout.CENTER);
+    }
+
+    private JPanel createVitalsTab() {
         JPanel mainContent = new JPanel(new BorderLayout(12, 12));
         mainContent.setBackground(UIUtils.COLOR_BG);
+        mainContent.setBorder(new EmptyBorder(12, 0, 0, 0));
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         toolbar.setOpaque(false);
@@ -72,8 +87,38 @@ public class NursePanel extends JPanel {
         UIUtils.styleTable(vitalsTable);
 
         mainContent.add(new JScrollPane(vitalsTable), BorderLayout.CENTER);
+        return mainContent;
+    }
 
-        add(mainContent, BorderLayout.CENTER);
+    private JPanel createMARTab() {
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBackground(UIUtils.COLOR_BG);
+        panel.setBorder(new EmptyBorder(12, 0, 0, 0));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        toolbar.setOpaque(false);
+
+        JButton btnAdminister = UIUtils.createStyledButton("Record Med Administration", UIUtils.COLOR_SUCCESS, Color.WHITE);
+        JButton btnRefresh = UIUtils.createStyledButton("Refresh Queue", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
+
+        btnAdminister.addActionListener(e -> recordMedAdministration());
+        btnRefresh.addActionListener(e -> refreshTables());
+
+        toolbar.add(btnAdminister);
+        toolbar.add(btnRefresh);
+
+        panel.add(toolbar, BorderLayout.NORTH);
+
+        String[] cols = {"Rx ID", "Patient Name", "Doctor Name", "Medicines", "Status", "Admin Logs"};
+        marModel = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        marTable = new JTable(marModel);
+        UIUtils.styleTable(marTable);
+        marTable.getColumnModel().getColumn(4).setCellRenderer(new UIUtils.StatusBadgeRenderer());
+
+        panel.add(new JScrollPane(marTable), BorderLayout.CENTER);
+        return panel;
     }
 
     private void openRecordVitalsDialog() {
@@ -150,10 +195,55 @@ public class NursePanel extends JPanel {
         dialog.setVisible(true);
     }
 
+    private void recordMedAdministration() {
+        int sel = marTable.getSelectedRow();
+        if (sel == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a prescription from the MAR list.", "Notice", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String rxId = (String) marModel.getValueAt(sel, 0);
+        com.hospital.model.Prescription rx = dataStore.getPrescriptions().stream().filter(r -> r.getId().equals(rxId)).findFirst().orElse(null);
+        if (rx == null) return;
+
+        JTextArea txtNotes = new JTextArea(3, 30);
+        int result = JOptionPane.showConfirmDialog(this, new JScrollPane(txtNotes), "Administer Medicines for " + rx.getPatientName() + "\nEnter Administration Notes:", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        
+        if (result == JOptionPane.OK_OPTION) {
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+            String note = txtNotes.getText().trim();
+            String logEntry = timestamp + " - Administered by " + nurse.getFullName() + (note.isEmpty() ? "" : " (Notes: " + note + ")");
+            rx.addAdministrationLog(logEntry);
+            dataStore.addLog(nurse.getFullName(), "NURSE", "MED_ADMINISTRATION", "Administered medicines for Rx " + rxId);
+            dataStore.saveAllData();
+            refreshTables();
+            JOptionPane.showMessageDialog(this, "Medication Administration Recorded!");
+        }
+    }
+
     public void refreshTables() {
-        vitalsModel.setRowCount(0);
-        for (VitalSign v : dataStore.getVitals()) {
-            vitalsModel.addRow(new Object[]{v.getId(), v.getTimestamp(), v.getPatientName(), v.getBloodPressure(), v.getHeartRate(), v.getTemperature(), v.getRespiratoryRate(), v.getNotes()});
+        if (vitalsModel != null) {
+            vitalsModel.setRowCount(0);
+            for (VitalSign v : dataStore.getVitals()) {
+                vitalsModel.addRow(new Object[]{v.getId(), v.getTimestamp(), v.getPatientName(), v.getBloodPressure(), v.getHeartRate(), v.getTemperature(), v.getRespiratoryRate(), v.getNotes()});
+            }
+        }
+        
+        if (marModel != null) {
+            marModel.setRowCount(0);
+            for (com.hospital.model.Prescription rx : dataStore.getPrescriptions()) {
+                StringBuilder meds = new StringBuilder();
+                for (com.hospital.model.Prescription.PrescriptionItem item : rx.getItems()) {
+                    meds.append(item.getMedicineName()).append(" ");
+                }
+                
+                String lastLog = "No logs yet";
+                if (rx.getAdministrationLogs() != null && !rx.getAdministrationLogs().isEmpty()) {
+                    lastLog = rx.getAdministrationLogs().get(rx.getAdministrationLogs().size() - 1);
+                }
+                
+                marModel.addRow(new Object[]{rx.getId(), rx.getPatientName(), rx.getDoctorName(), meds.toString(), rx.getStatus(), lastLog});
+            }
         }
     }
 }

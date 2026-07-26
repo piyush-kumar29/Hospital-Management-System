@@ -23,6 +23,8 @@ public class DataStore {
     private List<BedAllocation> beds;
     private List<Invoice> invoices;
     private List<SystemLog> logs;
+    private List<LabTest> labTests;
+    private List<IPDAdmissionRequest> ipdAdmissionRequests;
 
     private DataStore() {
         ensureDataDir();
@@ -66,8 +68,21 @@ public class DataStore {
 
     private <T> void saveList(String filename, List<T> list) {
         File file = new File(DATA_DIR, filename);
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
-            oos.writeObject(list);
+        BackupManager.backup(file);
+        
+        try (FileOutputStream fos = new FileOutputStream(file);
+             java.nio.channels.FileChannel channel = fos.getChannel()) {
+             
+            java.nio.channels.FileLock lock = channel.lock(); // Acquire exclusive lock
+            try {
+                ObjectOutputStream oos = new ObjectOutputStream(fos);
+                oos.writeObject(list);
+                oos.flush();
+            } finally {
+                if (lock != null && lock.isValid()) {
+                    lock.release();
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -82,6 +97,8 @@ public class DataStore {
         beds = loadList("beds.dat");
         invoices = loadList("invoices.dat");
         logs = loadList("logs.dat");
+        labTests = loadList("labtests.dat");
+        ipdAdmissionRequests = loadList("ipdrequests.dat");
     }
 
     public synchronized void saveAllData() {
@@ -93,6 +110,8 @@ public class DataStore {
         saveList("beds.dat", beds);
         saveList("invoices.dat", invoices);
         saveList("logs.dat", logs);
+        saveList("labtests.dat", labTests);
+        saveList("ipdrequests.dat", ipdAdmissionRequests);
     }
 
     private void seedDefaultData() {
@@ -109,10 +128,11 @@ public class DataStore {
         Nurse nurse = new Nurse("USR-106", "nurse", "nurse123", "Clara Oswald", "nurse@hospital.com", "+1-555-0106", "Ward A - ICU");
         Pharmacist pharmacist = new Pharmacist("USR-107", "pharma", "pharma123", "Marcus Vance", "pharma@hospital.com", "+1-555-0107");
         BillingStaff billing = new BillingStaff("USR-108", "billing", "bill123", "Helen Mirren", "billing@hospital.com", "+1-555-0108");
+        LabTech labTech = new LabTech("USR-112", "labtech", "lab123", "Dexter Morgan", "lab@hospital.com", "+1-555-0112", "Pathology");
 
-        Patient patient1 = new Patient("USR-109", "patient", "patient123", "John Doe", "john@example.com", "+1-555-0201", 38, "Male", "O+", "742 Evergreen Terrace", "Jane Doe (+1-555-0200)", "IPD");
-        Patient patient2 = new Patient("USR-110", "patient2", "patient123", "Mary Johnson", "mary@example.com", "+1-555-0202", 45, "Female", "A+", "123 Main St", "Tom Johnson (+1-555-0209)", "OPD");
-        Patient patient3 = new Patient("USR-111", "patient3", "patient123", "David Miller", "david@example.com", "+1-555-0203", 62, "Male", "B-", "456 Oak Ave", "Sarah Miller (+1-555-0210)", "IPD");
+        Patient patient1 = new Patient("PARAS-2026-0001", "patient", "patient123", "John Doe", "john@example.com", "+1-555-0201", 38, "Male", "O+", "742 Evergreen Terrace", "Jane Doe (+1-555-0200)", "IPD", "TPA/BlueCross");
+        Patient patient2 = new Patient("PARAS-2026-0002", "patient2", "patient123", "Mary Johnson", "mary@example.com", "+1-555-0202", 45, "Female", "A+", "123 Main St", "Tom Johnson (+1-555-0209)", "OPD", "Cash");
+        Patient patient3 = new Patient("PARAS-2026-0003", "patient3", "patient123", "David Miller", "david@example.com", "+1-555-0203", 62, "Male", "B-", "456 Oak Ave", "Sarah Miller (+1-555-0210)", "IPD", "Medicare");
 
         users.add(admin);
         users.add(receptionist);
@@ -122,6 +142,7 @@ public class DataStore {
         users.add(nurse);
         users.add(pharmacist);
         users.add(billing);
+        users.add(labTech);
         users.add(patient1);
         users.add(patient2);
         users.add(patient3);
@@ -134,20 +155,20 @@ public class DataStore {
         medicines.add(new Medicine("MED-105", "Ibuprofen 400mg", "NSAID", 18, 8.50, "2026-10-15")); // Low stock demo
 
         // 3. Bed Allocations
-        beds.add(new BedAllocation("BED-101", "A-101", "Ward A (General)", "USR-109", "John Doe", "2026-07-20", "OCCUPIED", 100.0));
+        beds.add(new BedAllocation("BED-101", "A-101", "Ward A (General)", "PARAS-2026-0001", "John Doe", "2026-07-20", "OCCUPIED", 100.0));
         beds.add(new BedAllocation("BED-102", "A-102", "Ward A (General)", "", "", "", "AVAILABLE", 100.0));
-        beds.add(new BedAllocation("BED-103", "ICU-01", "ICU Ward", "USR-111", "David Miller", "2026-07-24", "OCCUPIED", 350.0));
+        beds.add(new BedAllocation("BED-103", "ICU-01", "ICU Ward", "PARAS-2026-0003", "David Miller", "2026-07-24", "OCCUPIED", 350.0));
         beds.add(new BedAllocation("BED-104", "ICU-02", "ICU Ward", "", "", "", "AVAILABLE", 350.0));
         beds.add(new BedAllocation("BED-105", "B-201", "Ward B (Private)", "", "", "", "AVAILABLE", 200.0));
 
         // 4. Appointments
-        Appointment app1 = new Appointment("APT-101", "USR-109", "John Doe", "USR-103", "Dr. Robert Vance", "2026-07-27", "09:00 AM - 10:00 AM", "Chest pain & shortness of breath");
+        Appointment app1 = new Appointment("APT-101", "PARAS-2026-0001", "John Doe", "USR-103", "Dr. Robert Vance", "2026-07-27", "09:00 AM - 10:00 AM", "Chest pain & shortness of breath", "TK-001");
         app1.setStatus(AppointmentStatus.CONFIRMED);
 
-        Appointment app2 = new Appointment("APT-102", "USR-110", "Mary Johnson", "USR-104", "Dr. Alice Smith", "2026-07-27", "10:00 AM - 11:00 AM", "Migraine headaches");
+        Appointment app2 = new Appointment("APT-102", "PARAS-2026-0002", "Mary Johnson", "USR-104", "Dr. Alice Smith", "2026-07-27", "10:00 AM - 11:00 AM", "Migraine headaches", "TK-002");
         app2.setStatus(AppointmentStatus.REQUESTED);
 
-        Appointment app3 = new Appointment("APT-103", "USR-111", "David Miller", "USR-103", "Dr. Robert Vance", "2026-07-25", "02:00 PM - 03:00 PM", "Hypertension follow up");
+        Appointment app3 = new Appointment("APT-103", "USR-111", "David Miller", "USR-103", "Dr. Robert Vance", "2026-07-25", "02:00 PM - 03:00 PM", "Hypertension follow up", "TK-003");
         app3.setStatus(AppointmentStatus.COMPLETED);
         app3.setDiagnosis("Essential Hypertension Stage 1. Controlled.");
         app3.setPrescriptionNotes("Prescribed Atorvastatin and Paracetamol as needed.");
@@ -176,7 +197,12 @@ public class DataStore {
         inv1.setPaymentMethod("CARD");
         invoices.add(inv1);
 
-        // 8. System Audit Logs
+        // 8. Lab Tests
+        LabTest test1 = new LabTest("LAB-101", "PARAS-2026-0001", "John Doe", "USR-103", "Dr. Robert Vance", "Complete Blood Count (CBC)", "2026-07-25", 50.0);
+        labTests.add(test1);
+        labTests.add(new LabTest("LAB-102", "PARAS-2026-0003", "David Miller", "USR-103", "Dr. Robert Vance", "Lipid Profile", "2026-07-26", 45.0));
+        
+        // 9. System Audit Logs
         String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         logs.add(new SystemLog(now, "SYSTEM", "SYSTEM", "DATA_SEED", "Initial seed dataset created successfully."));
 
@@ -192,6 +218,8 @@ public class DataStore {
     public synchronized List<BedAllocation> getBeds() { return beds; }
     public synchronized List<Invoice> getInvoices() { return invoices; }
     public synchronized List<SystemLog> getLogs() { return logs; }
+    public synchronized List<LabTest> getLabTests() { return labTests; }
+    public synchronized List<IPDAdmissionRequest> getIpdAdmissionRequests() { return ipdAdmissionRequests; }
 
     public synchronized void addLog(String username, String role, String action, String details) {
         String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));

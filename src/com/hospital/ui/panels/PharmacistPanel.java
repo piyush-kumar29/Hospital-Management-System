@@ -23,6 +23,9 @@ public class PharmacistPanel extends JPanel {
     private JTable stockTable;
     private DefaultTableModel stockModel;
 
+    private JTable returnTable;
+    private DefaultTableModel returnModel;
+
     public PharmacistPanel(Pharmacist pharmacist) {
         this.pharmacist = pharmacist;
         setLayout(new BorderLayout(16, 16));
@@ -54,6 +57,7 @@ public class PharmacistPanel extends JPanel {
 
         tabbedPane.addTab("Prescription Dispensing Queue", createDispensingTab());
         tabbedPane.addTab("Medicine Inventory Stock", createInventoryTab());
+        tabbedPane.addTab("Returns & Refunds (IPD)", createReturnsTab());
 
         add(tabbedPane, BorderLayout.CENTER);
     }
@@ -117,6 +121,36 @@ public class PharmacistPanel extends JPanel {
         UIUtils.styleTable(stockTable);
 
         panel.add(new JScrollPane(stockTable), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createReturnsTab() {
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBackground(UIUtils.COLOR_BG);
+        panel.setBorder(new EmptyBorder(12, 0, 0, 0));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        toolbar.setOpaque(false);
+
+        JButton btnReturn = UIUtils.createStyledButton("Process Unused Drug Return", UIUtils.COLOR_WARNING, Color.WHITE);
+        JButton btnRefresh = UIUtils.createStyledButton("Refresh", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
+
+        btnReturn.addActionListener(e -> processReturnAction());
+        btnRefresh.addActionListener(e -> refreshTables());
+
+        toolbar.add(btnReturn);
+        toolbar.add(btnRefresh);
+
+        panel.add(toolbar, BorderLayout.NORTH);
+
+        String[] cols = {"Rx ID", "Patient Name", "Status", "Items"};
+        returnModel = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        returnTable = new JTable(returnModel);
+        UIUtils.styleTable(returnTable);
+
+        panel.add(new JScrollPane(returnTable), BorderLayout.CENTER);
         return panel;
     }
 
@@ -205,6 +239,64 @@ public class PharmacistPanel extends JPanel {
         dialog.setVisible(true);
     }
 
+    private void processReturnAction() {
+        int sel = returnTable.getSelectedRow();
+        if (sel == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a dispensed prescription to process return.", "Notice", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String rxId = (String) returnModel.getValueAt(sel, 0);
+        String status = (String) returnModel.getValueAt(sel, 2);
+
+        if (!"DISPENSED".equals(status)) {
+            JOptionPane.showMessageDialog(this, "Only dispensed prescriptions can have items returned.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        com.hospital.model.Prescription rx = com.hospital.repository.DataStore.getInstance().getPrescriptions().stream().filter(p -> p.getId().equals(rxId)).findFirst().orElse(null);
+        if (rx == null) return;
+
+        String[] items = rx.getItems().stream().map(i -> i.getMedicineName() + " (Qty: " + i.getQuantity() + ")").toArray(String[]::new);
+        String itemStr = (String) JOptionPane.showInputDialog(this, "Select Item to Return:", "Process Return", JOptionPane.QUESTION_MESSAGE, null, items, items[0]);
+
+        if (itemStr != null) {
+            String medName = itemStr.split("\\(")[0].trim();
+            com.hospital.model.Prescription.PrescriptionItem targetItem = rx.getItems().stream().filter(i -> i.getMedicineName().equals(medName)).findFirst().orElse(null);
+            
+            if (targetItem != null) {
+                String qtyStr = JOptionPane.showInputDialog(this, "Enter Quantity to Return (Max " + targetItem.getQuantity() + "):", "1");
+                try {
+                    int qty = Integer.parseInt(qtyStr.trim());
+                    if (qty <= 0 || qty > targetItem.getQuantity()) {
+                        JOptionPane.showMessageDialog(this, "Invalid quantity.", "Error", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    
+                    com.hospital.service.BillingService billingService = new com.hospital.service.BillingService();
+                    com.hospital.model.Patient patient = (com.hospital.model.Patient) com.hospital.repository.DataStore.getInstance().getUsers().stream().filter(u -> u.getId().equals(rx.getPatientId())).findFirst().orElse(null);
+                    
+                    com.hospital.model.Medicine med = inventoryService.getAllMedicines().stream().filter(m -> m.getName().equalsIgnoreCase(medName)).findFirst().orElse(null);
+                    if (med != null && patient != null) {
+                        double refundAmount = qty * med.getUnitPrice();
+                        
+                        // Increment stock
+                        med.setStockQuantity(med.getStockQuantity() + qty);
+                        inventoryService.addOrUpdateMedicine(med); // Saves DataStore
+                        
+                        // Add negative charge to invoice
+                        billingService.addChargeToPatientInvoice(patient, "Refund: Unused " + medName + " (Qty: " + qty + ")", -refundAmount, pharmacist.getFullName());
+                        
+                        JOptionPane.showMessageDialog(this, "Processed return for " + qty + " of " + medName + ". Refunded $" + refundAmount);
+                        refreshTables();
+                    }
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "Invalid input.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }
+    }
+
     public void refreshTables() {
         rxModel.setRowCount(0);
         for (Prescription rx : inventoryService.getPendingPrescriptions()) {
@@ -218,6 +310,19 @@ public class PharmacistPanel extends JPanel {
         stockModel.setRowCount(0);
         for (Medicine m : inventoryService.getAllMedicines()) {
             stockModel.addRow(new Object[]{m.getId(), m.getName(), m.getCategory(), m.getStockQuantity(), String.format("%.2f", m.getUnitPrice()), m.getExpiryDate()});
+        }
+
+        if (returnModel != null) {
+            returnModel.setRowCount(0);
+            for (com.hospital.model.Prescription rx : com.hospital.repository.DataStore.getInstance().getPrescriptions()) {
+                if ("DISPENSED".equals(rx.getStatus())) {
+                    StringBuilder items = new StringBuilder();
+                    for (com.hospital.model.Prescription.PrescriptionItem item : rx.getItems()) {
+                        items.append(item.getMedicineName()).append(" (x").append(item.getQuantity()).append("); ");
+                    }
+                    returnModel.addRow(new Object[]{rx.getId(), rx.getPatientName(), rx.getStatus(), items.toString()});
+                }
+            }
         }
     }
 }

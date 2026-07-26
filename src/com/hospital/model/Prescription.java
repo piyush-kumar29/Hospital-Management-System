@@ -17,6 +17,7 @@ public class Prescription implements Serializable {
     private List<PrescriptionItem> items;
     private String status; // "PENDING", "DISPENSED"
     private String clinicalNotes;
+    private List<String> administrationLogs;
 
     public static class PrescriptionItem implements Serializable {
         private static final long serialVersionUID = 1L;
@@ -50,6 +51,7 @@ public class Prescription implements Serializable {
         this.clinicalNotes = clinicalNotes;
         this.items = new ArrayList<>();
         this.status = "PENDING";
+        this.administrationLogs = new ArrayList<>();
     }
 
     public String getId() { return id; }
@@ -63,6 +65,14 @@ public class Prescription implements Serializable {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getClinicalNotes() { return clinicalNotes; }
+    public List<String> getAdministrationLogs() { return administrationLogs; }
+
+    public void addAdministrationLog(String log) {
+        if (this.administrationLogs == null) {
+            this.administrationLogs = new ArrayList<>();
+        }
+        this.administrationLogs.add(log);
+    }
 
     public void addItem(String medicineName, String dosage, String duration, int quantity) {
         this.items.add(new PrescriptionItem(medicineName, dosage, duration, quantity));

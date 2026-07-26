@@ -9,7 +9,8 @@ public enum Role implements Serializable {
     NURSE("Nurse / Ward Staff"),
     PHARMACIST("Pharmacist"),
     BILLING("Billing & Accounts"),
-    PATIENT("Patient");
+    PATIENT("Patient"),
+    LAB_TECH("Pathologist / Lab Tech");
 
     private final String displayName;
 

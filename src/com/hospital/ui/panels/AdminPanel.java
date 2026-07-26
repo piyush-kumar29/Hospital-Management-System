@@ -138,7 +138,7 @@ public class AdminPanel extends JPanel {
         JTextField txtEmail = UIUtils.createStyledTextField(15);
         JTextField txtPhone = UIUtils.createStyledTextField(15);
 
-        String[] roles = {Role.RECEPTIONIST.name(), Role.DOCTOR.name(), Role.NURSE.name(), Role.PHARMACIST.name(), Role.BILLING.name()};
+        String[] roles = {Role.RECEPTIONIST.name(), Role.DOCTOR.name(), Role.NURSE.name(), Role.PHARMACIST.name(), Role.BILLING.name(), Role.LAB_TECH.name()};
         JComboBox<String> cbRole = UIUtils.createStyledComboBox(roles);
 
         JTextField txtSpecialty = UIUtils.createStyledTextField(15);
@@ -208,6 +208,9 @@ public class AdminPanel extends JPanel {
                     break;
                 case BILLING:
                     newUser = new BillingStaff(newId, uname, pwd, fname, email, phone);
+                    break;
+                case LAB_TECH:
+                    newUser = new LabTech(newId, uname, pwd, fname, email, phone, "Pathology");
                     break;
                 default:
                     break;

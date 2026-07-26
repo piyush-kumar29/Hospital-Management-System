@@ -23,6 +23,9 @@ public class ReceptionistPanel extends JPanel {
     private JTable bedsTable;
     private DefaultTableModel bedsModel;
 
+    private JTable ipdReqTable;
+    private DefaultTableModel ipdReqModel;
+
     public ReceptionistPanel() {
         setLayout(new BorderLayout(16, 16));
         setBackground(UIUtils.COLOR_BG);
@@ -54,6 +57,8 @@ public class ReceptionistPanel extends JPanel {
 
         tabbedPane.addTab("Patient Desk & OPD Registration", createPatientDeskTab());
         tabbedPane.addTab("IPD Bed Allocation", createBedAllocationTab());
+        tabbedPane.addTab("Pending IPD Admissions", createIPDAdmissionsTab());
+        tabbedPane.addTab("Security / Gate Pass Verification", createGatePassTab());
 
         add(tabbedPane, BorderLayout.CENTER);
     }
@@ -67,17 +72,20 @@ public class ReceptionistPanel extends JPanel {
         toolbar.setOpaque(false);
 
         JButton btnRegister = UIUtils.createStyledButton("+ Register New Patient", UIUtils.COLOR_PRIMARY, Color.WHITE);
+        JButton btnEmergency = UIUtils.createStyledButton("🚨 Emergency / Casualty Registration", UIUtils.COLOR_DANGER, Color.WHITE);
         JButton btnRefresh = UIUtils.createStyledButton("Refresh", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
 
-        btnRegister.addActionListener(e -> openRegisterPatientDialog());
+        btnRegister.addActionListener(e -> openRegisterPatientDialog(false));
+        btnEmergency.addActionListener(e -> openRegisterPatientDialog(true));
         btnRefresh.addActionListener(e -> refreshTables());
 
         toolbar.add(btnRegister);
+        toolbar.add(btnEmergency);
         toolbar.add(btnRefresh);
 
         panel.add(toolbar, BorderLayout.NORTH);
 
-        String[] cols = {"Patient ID", "Name", "Age / Gender", "Type", "Blood Group", "Phone", "Emergency Contact", "Address"};
+        String[] cols = {"Patient ID", "Name", "Age / Gender", "Type", "Blood Group", "Phone", "Emergency Contact", "Insurance"};
         patientsModel = new DefaultTableModel(cols, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -123,8 +131,69 @@ public class ReceptionistPanel extends JPanel {
         return panel;
     }
 
-    private void openRegisterPatientDialog() {
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Register New Patient", true);
+    private JPanel createIPDAdmissionsTab() {
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBackground(UIUtils.COLOR_BG);
+        panel.setBorder(new EmptyBorder(12, 0, 0, 0));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        toolbar.setOpaque(false);
+        JButton btnRefresh = UIUtils.createStyledButton("Refresh", UIUtils.COLOR_SIDEBAR_HOVER, Color.WHITE);
+        btnRefresh.addActionListener(e -> refreshTables());
+        toolbar.add(btnRefresh);
+        panel.add(toolbar, BorderLayout.NORTH);
+
+        String[] cols = {"Request ID", "Patient Name", "Doctor", "Target Ward", "Date", "Status"};
+        ipdReqModel = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        ipdReqTable = new JTable(ipdReqModel);
+        UIUtils.styleTable(ipdReqTable);
+        ipdReqTable.getColumnModel().getColumn(5).setCellRenderer(new UIUtils.StatusBadgeRenderer());
+
+        panel.add(new JScrollPane(ipdReqTable), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createGatePassTab() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBackground(UIUtils.COLOR_BG);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(10, 10, 10, 10);
+        
+        JTextField txtGatePass = UIUtils.createStyledTextField(20);
+        JButton btnVerify = UIUtils.createStyledButton("Verify Gate Pass", UIUtils.COLOR_SUCCESS, Color.WHITE);
+        JLabel lblResult = new JLabel("");
+        lblResult.setFont(UIUtils.FONT_BOLD);
+        
+        btnVerify.addActionListener(e -> {
+            String gp = txtGatePass.getText().trim();
+            if (gp.isEmpty()) return;
+            boolean found = false;
+            for (Patient p : patientService.getAllPatients()) {
+                if (gp.equals(p.getGatePassId())) {
+                    if (p.isFinancialDischarge()) {
+                        lblResult.setText("<html><font color='green'>Valid Gate Pass: Patient " + p.getFullName() + " cleared for exit.</font></html>");
+                    } else {
+                        lblResult.setText("<html><font color='red'>Invalid: Financial Discharge not complete for " + p.getFullName() + ".</font></html>");
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) lblResult.setText("<html><font color='red'>Gate Pass not found.</font></html>");
+        });
+
+        gbc.gridx = 0; gbc.gridy = 0; panel.add(new JLabel("Enter Gate Pass ID:"), gbc);
+        gbc.gridx = 1; panel.add(txtGatePass, gbc);
+        gbc.gridx = 2; panel.add(btnVerify, gbc);
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 3; panel.add(lblResult, gbc);
+
+        return panel;
+    }
+
+    private void openRegisterPatientDialog(boolean isEmergency) {
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), isEmergency ? "Emergency Casualty Registration" : "Register New Patient", true);
         dialog.setLayout(new GridBagLayout());
         dialog.setSize(480, 520);
         dialog.setLocationRelativeTo(this);
@@ -140,9 +209,15 @@ public class ReceptionistPanel extends JPanel {
         JComboBox<String> cbGender = UIUtils.createStyledComboBox(new String[]{"Male", "Female", "Other"});
         JComboBox<String> cbBlood = UIUtils.createStyledComboBox(new String[]{"A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"});
         JComboBox<String> cbType = UIUtils.createStyledComboBox(new String[]{"OPD", "IPD"});
+        if (isEmergency) cbType.setSelectedItem("IPD");
+        
         JTextField txtPhone = UIUtils.createStyledTextField(15);
         JTextField txtEmergency = UIUtils.createStyledTextField(15);
         JTextField txtAddress = UIUtils.createStyledTextField(15);
+        JComboBox<String> cbInsurance = UIUtils.createStyledComboBox(new String[]{"Cash", "TPA/BlueCross", "Medicare", "HDFC ERGO", "Star Health"});
+        
+        JCheckBox chkMLC = new JCheckBox("Medico-Legal Case (MLC)");
+        chkMLC.setBackground(UIUtils.COLOR_BG);
 
         int row = 0;
         gbc.gridx = 0; gbc.gridy = row; dialog.add(new JLabel("Full Name:"), gbc);
@@ -185,8 +260,17 @@ public class ReceptionistPanel extends JPanel {
         gbc.gridx = 1; dialog.add(txtAddress, gbc);
 
         row++;
+        gbc.gridx = 0; gbc.gridy = row; dialog.add(new JLabel("Insurance/TPA:"), gbc);
+        gbc.gridx = 1; dialog.add(cbInsurance, gbc);
+
+        if (isEmergency) {
+            row++;
+            gbc.gridx = 1; gbc.gridy = row; dialog.add(chkMLC, gbc);
+        }
+
+        row++;
         gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 2;
-        JButton btnSubmit = UIUtils.createStyledButton("Register Patient Record", UIUtils.COLOR_PRIMARY, Color.WHITE);
+        JButton btnSubmit = UIUtils.createStyledButton(isEmergency ? "Fast-Track Emergency Admission" : "Register Patient Record", isEmergency ? UIUtils.COLOR_DANGER : UIUtils.COLOR_PRIMARY, Color.WHITE);
         btnSubmit.addActionListener(e -> {
             try {
                 String name = txtName.getText().trim();
@@ -199,13 +283,15 @@ public class ReceptionistPanel extends JPanel {
                 String phone = txtPhone.getText().trim();
                 String emergency = txtEmergency.getText().trim();
                 String addr = txtAddress.getText().trim();
+                String insurance = (String) cbInsurance.getSelectedItem();
+                boolean mlc = isEmergency && chkMLC.isSelected();
 
                 if (name.isEmpty() || uname.isEmpty() || pwd.isEmpty()) {
                     JOptionPane.showMessageDialog(dialog, "Required fields missing!", "Error", JOptionPane.ERROR_MESSAGE);
                     return;
                 }
 
-                patientService.registerPatient(uname, pwd, name, uname + "@patient.com", phone, age, gender, blood, addr, emergency, type);
+                patientService.registerPatient(uname, pwd, name, uname + "@patient.com", phone, age, gender, blood, addr, emergency, type, insurance, isEmergency, mlc);
                 refreshTables();
                 dialog.dispose();
                 JOptionPane.showMessageDialog(this, "Patient Registered Successfully!");
@@ -281,12 +367,19 @@ public class ReceptionistPanel extends JPanel {
     public void refreshTables() {
         patientsModel.setRowCount(0);
         for (Patient p : patientService.getAllPatients()) {
-            patientsModel.addRow(new Object[]{p.getId(), p.getFullName(), p.getAge() + " / " + p.getGender(), p.getPatientType(), p.getBloodGroup(), p.getPhone(), p.getEmergencyContact(), p.getAddress()});
+            patientsModel.addRow(new Object[]{p.getId(), p.getFullName(), p.getAge() + " / " + p.getGender(), p.getPatientType(), p.getBloodGroup(), p.getPhone(), p.getEmergencyContact(), p.getInsuranceProvider()});
         }
 
         bedsModel.setRowCount(0);
         for (BedAllocation b : wardService.getAllBeds()) {
             bedsModel.addRow(new Object[]{b.getId(), b.getBedNumber(), b.getWardName(), b.getStatus(), b.getPatientName().isEmpty() ? "Unassigned" : b.getPatientName(), b.getAdmissionDate(), String.format("%.2f", b.getDailyRate())});
+        }
+
+        if (ipdReqModel != null) {
+            ipdReqModel.setRowCount(0);
+            for (com.hospital.model.IPDAdmissionRequest req : com.hospital.repository.DataStore.getInstance().getIpdAdmissionRequests()) {
+                ipdReqModel.addRow(new Object[]{req.getId(), req.getPatientName(), req.getRequestingDoctorName(), req.getTargetWard(), req.getRequestDate(), req.getStatus()});
+            }
         }
     }
 }

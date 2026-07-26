@@ -16,9 +16,10 @@ public class Appointment implements Serializable {
     private String symptoms;
     private String diagnosis;
     private String prescriptionNotes;
+    private String tokenNumber;
 
     public Appointment(String id, String patientId, String patientName, String doctorId, String doctorName,
-                       String appointmentDate, String timeSlot, String symptoms) {
+                       String appointmentDate, String timeSlot, String symptoms, String tokenNumber) {
         this.id = id;
         this.patientId = patientId;
         this.patientName = patientName;
@@ -30,7 +31,11 @@ public class Appointment implements Serializable {
         this.status = AppointmentStatus.REQUESTED;
         this.diagnosis = "";
         this.prescriptionNotes = "";
+        this.tokenNumber = tokenNumber;
     }
+
+    public String getTokenNumber() { return tokenNumber; }
+    public void setTokenNumber(String tokenNumber) { this.tokenNumber = tokenNumber; }
 
     public String getId() {
         return id;

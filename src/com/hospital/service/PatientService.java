@@ -14,9 +14,17 @@ public class PatientService {
     private final DataStore dataStore = DataStore.getInstance();
 
     public Patient registerPatient(String username, String password, String fullName, String email, String phone,
-                                   int age, String gender, String bloodGroup, String address, String emergencyContact, String patientType) {
-        String id = "USR-" + (dataStore.getUsers().size() + 101);
-        Patient patient = new Patient(id, username, password, fullName, email, phone, age, gender, bloodGroup, address, emergencyContact, patientType);
+                                   int age, String gender, String bloodGroup, String address, String emergencyContact, String patientType, String insuranceProvider, boolean isEmergency, boolean isMLC) {
+        
+        int patientCount = 0;
+        for (User u : dataStore.getUsers()) {
+            if (u instanceof Patient) patientCount++;
+        }
+        
+        String prefix = isEmergency ? "EMG-2026-" : "PARAS-2026-";
+        String id = prefix + String.format("%04d", patientCount + 1);
+        Patient patient = new Patient(id, username, password, fullName, email, phone, age, gender, bloodGroup, address, emergencyContact, patientType, insuranceProvider);
+        patient.setMLC(isMLC);
         dataStore.getUsers().add(patient);
         dataStore.saveAllData();
         dataStore.addLog("SYSTEM", "STAFF", "REGISTER_PATIENT", "Registered new patient: " + fullName + " (" + id + ")");

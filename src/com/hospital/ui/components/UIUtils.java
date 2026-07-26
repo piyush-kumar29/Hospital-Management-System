@@ -11,6 +11,7 @@ public class UIUtils {
     // Theme Colors
     public static final Color COLOR_PRIMARY = new Color(37, 99, 235);       // #2563EB Vibrant Blue
     public static final Color COLOR_PRIMARY_DARK = new Color(29, 78, 216);  // #1D4ED8
+    public static final Color COLOR_SECONDARY = new Color(71, 85, 105);     // #475569 Slate
     public static final Color COLOR_SIDEBAR = new Color(15, 23, 42);        // #0F172A Dark Slate
     public static final Color COLOR_SIDEBAR_HOVER = new Color(30, 41, 59);  // #1E293B
     public static final Color COLOR_BG = new Color(248, 250, 252);          // #F8FAFC Light Slate BG

@@ -45,6 +45,29 @@ public class BillingService {
         return invoice;
     }
 
+    public void addChargeToPatientInvoice(Patient patient, String description, double amount, String createdBy) {
+        if (amount <= 0) return;
+        
+        Invoice openInvoice = null;
+        for (Invoice inv : dataStore.getInvoices()) {
+            if (inv.getPatientId().equals(patient.getId()) && "UNPAID".equals(inv.getPaymentStatus())) {
+                openInvoice = inv;
+                break;
+            }
+        }
+        
+        if (openInvoice == null) {
+            String id = "INV-" + (dataStore.getInvoices().size() + 101);
+            String today = LocalDate.now().toString();
+            openInvoice = new Invoice(id, patient.getId(), patient.getFullName(), today);
+            dataStore.getInvoices().add(openInvoice);
+        }
+        
+        openInvoice.addItem(description, amount);
+        dataStore.saveAllData();
+        dataStore.addLog(createdBy, "BILLING", "ADD_CHARGE", "Added charge of $" + amount + " to Invoice " + openInvoice.getId() + " for " + patient.getFullName());
+    }
+
     public boolean recordPayment(String invoiceId, String paymentMethod, String processedBy) {
         for (Invoice inv : dataStore.getInvoices()) {
             if (inv.getId().equals(invoiceId)) {
