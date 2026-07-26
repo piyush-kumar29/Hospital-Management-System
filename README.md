@@ -4,7 +4,7 @@ A comprehensive, role-based desktop application built in Java using the Swing UI
 
 ## Features
 
-- **Role-Based Access Control (RBAC):** Tailored dashboards and permissions for 7 distinct user roles.
+- **Role-Based Access Control (RBAC):** Tailored dashboards and permissions for distinct user roles.
 - **Appointment Management:** Schedule, confirm, request, and complete patient appointments.
 - **Bed & Ward Allocation:** Manage ICU, General, and Private wards with live occupancy tracking.
 - **Pharmacy & Inventory:** Keep track of medicines, stock levels, and issue prescriptions.
