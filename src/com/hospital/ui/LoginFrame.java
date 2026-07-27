@@ -75,11 +75,9 @@ public class LoginFrame extends JFrame {
         loginHeader.setFont(UIUtils.FONT_TITLE);
         loginHeader.setForeground(UIUtils.COLOR_TEXT_MAIN);
 
-        txtUsername = UIUtils.createStyledTextField(20);
-        txtUsername.setText("admin");
+        txtUsername = UIUtils.createStyledTextField(20, "Username");
 
-        txtPassword = UIUtils.createStyledPasswordField(20);
-        txtPassword.setText("admin123");
+        txtPassword = UIUtils.createStyledPasswordField(20, "Password");
 
         JButton btnLogin = UIUtils.createStyledButton("Sign In to Portal", UIUtils.COLOR_PRIMARY, Color.WHITE);
         btnLogin.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
@@ -103,10 +101,8 @@ public class LoginFrame extends JFrame {
 
         rightPanel.add(loginHeader);
         rightPanel.add(Box.createVerticalStrut(20));
-        rightPanel.add(new JLabel("Username:"));
         rightPanel.add(txtUsername);
         rightPanel.add(Box.createVerticalStrut(10));
-        rightPanel.add(new JLabel("Password:"));
         rightPanel.add(txtPassword);
         rightPanel.add(Box.createVerticalStrut(15));
         rightPanel.add(btnLogin);
@@ -134,6 +130,11 @@ public class LoginFrame extends JFrame {
     }
 
     private void performLogin(String username, String password) {
+        if (username == null || username.trim().isEmpty() || password == null || password.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Both Username and Password are required!", "Validation Error", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         Optional<User> userOpt = authService.login(username, password);
         if (userOpt.isPresent()) {
             User user = userOpt.get();

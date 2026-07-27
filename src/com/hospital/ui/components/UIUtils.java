@@ -60,7 +60,26 @@ public class UIUtils {
     }
 
     public static JTextField createStyledTextField(int columns) {
-        JTextField tf = new JTextField(columns);
+        return createStyledTextField(columns, "");
+    }
+
+    public static JTextField createStyledTextField(int columns, String placeholder) {
+        JTextField tf = new JTextField(columns) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (getText().isEmpty()) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(new Color(156, 163, 175));
+                    g2.setFont(getFont().deriveFont(Font.ITALIC));
+                    FontMetrics fm = g2.getFontMetrics();
+                    int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+                    g2.drawString(placeholder, getInsets().left, y);
+                    g2.dispose();
+                }
+            }
+        };
         tf.setFont(FONT_REGULAR);
         tf.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(203, 213, 225), 1, true),
@@ -70,7 +89,26 @@ public class UIUtils {
     }
 
     public static JPasswordField createStyledPasswordField(int columns) {
-        JPasswordField pf = new JPasswordField(columns);
+        return createStyledPasswordField(columns, "");
+    }
+
+    public static JPasswordField createStyledPasswordField(int columns, String placeholder) {
+        JPasswordField pf = new JPasswordField(columns) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (getPassword().length == 0) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(new Color(156, 163, 175));
+                    g2.setFont(getFont().deriveFont(Font.ITALIC));
+                    FontMetrics fm = g2.getFontMetrics();
+                    int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+                    g2.drawString(placeholder, getInsets().left, y);
+                    g2.dispose();
+                }
+            }
+        };
         pf.setFont(FONT_REGULAR);
         pf.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(203, 213, 225), 1, true),
